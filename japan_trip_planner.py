@@ -51,7 +51,6 @@ if submitted:
 
     with st.spinner("正在搜尋最新資訊並生成 3 筆行程... 請稍候"):
         try:
-            # Tavily 搜尋
             search_results = tavily.search(
                 query=f"2026 日本 {destination} {days}天 自由行 台灣旅客 {attitude} {transport} 攻略 航班 {flight_dates}",
                 search_depth="advanced",
@@ -66,7 +65,7 @@ if submitted:
             st.success("✅ 3 筆推薦行程已生成！")
             st.markdown(markdown_content, unsafe_allow_html=True)
 
-            # 只保留 Markdown 下載
+            # Markdown 下載
             st.download_button(
                 label="📥 下載 Markdown 檔案",
                 data=markdown_content,
@@ -77,16 +76,13 @@ if submitted:
         except Exception as e:
             st.error(f"生成失敗：{str(e)}")
 
-# ================== 你的 Prompt 與生成函數 ==================
+# ================== 生成函數（使用你提供的 Prompt） ==================
 def generate_itineraries_with_gemini(user_input, search_results):
-    # 組合 context
+    # 組合參考資料
     context = "## 參考資料來源\n\n"
     for i, result in enumerate(search_results.get("results", []), 1):
         context += f"**來源 {i}**：{result.get('title')}\n"
         context += f"- 摘要：{result.get('content', '')[:500]}...\n\n"
-    
-    if search_results.get("answer"):
-        context += f"**Tavily 整體總結**：{search_results['answer']}\n\n"
 
     prompt = f"""你是一位資深日本自由行規劃師，擅長為台灣旅客設計符合預算、符合偏好的行程。
 
@@ -205,17 +201,16 @@ def generate_itineraries_with_gemini(user_input, search_results):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",   # 使用較穩定的 lite 版本
+                model="gemini-2.5-flash-lite",
                 contents=prompt
             )
             return response.text
         except Exception as e:
-            if "503" in str(e) or "unavailable" in str(e).lower() or "rate" in str(e).lower():
+            if any(x in str(e).lower() for x in ["503", "unavailable", "rate"]):
                 wait_time = min((2 ** attempt) * 3 + random.uniform(3, 10), 120)
                 time.sleep(wait_time)
             else:
                 raise e
-    
     raise Exception("多次重試後仍失敗")
 
 st.caption("日本自由行 AI 規劃師 | 第一版測試")
