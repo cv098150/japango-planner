@@ -1,36 +1,49 @@
+import streamlit as st
 from tavily import TavilyClient
 from google import genai
 import time
 import random
 from datetime import datetime
+import markdown2
+from weasyprint import HTML
+import base64
 
-# ================== API Key ==================
-TAVILY_API_KEY = "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"
-GEMINI_API_KEY = "AIzaSyAhG1xMN7neg3qaZ9i3DDNV-iBgO8vNC2w"
+# ================== 安全讀取 API Key ==================
+TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ================== 使用者輸入 ==================
-def get_user_input():
-    print("=== 日本個人化旅遊行程規劃器 ===\n")
+st.set_page_config(page_title="日本自由行 AI 規劃師", page_icon="🇯🇵", layout="centered")
+
+st.title("🇯🇵 日本自由行 AI 規劃師")
+st.markdown("**用 NT$30,000 左右的預算，輕鬆規劃高品質日本行程**")
+
+# ================== 使用者輸入表單 ==================
+with st.form("trip_form"):
+    col1, col2 = st.columns(2)
     
-    departure = input("出發地（例如：高雄 / 桃園 / 台中）：").strip()
-    destination = input("目的地（可多個，例如：大阪、京都、東京）：").strip()
-    days = int(input("旅遊天數（例如：5）："))
-    budget = int(input("每人總預算（台幣，例如：30000）："))
-    transport = input("交通偏好（大眾運輸 / 租車 / 混搭）：").strip() or "大眾運輸"
+    with col1:
+        departure = st.text_input("出發地", value="高雄")
+        days = st.number_input("旅遊天數", min_value=3, max_value=10, value=5)
+        budget = st.number_input("每人總預算 (NT$)", min_value=15000, max_value=100000, value=30000, step=1000)
     
-    flight_dates = input("飛行日期範圍（例如：4/14 - 4/19）：").strip()
-    
-    print("\n旅遊態度選擇（可直接輸入文字）：")
-    print("Chill（輕鬆慢活）、什麼都要玩到（高強度）、混合、或文化深度")
-    attitude = input("請輸入旅遊態度：").strip() or "混合"
-    
-    print(f"\n🔍 正在為您規劃「{attitude}」風格、飛行日期 {flight_dates} 的 3 筆行程...\n")
-    
-    return {
-        "departure": departure or "高雄",
+    with col2:
+        destination = st.text_input("目的地（可多個，例如：大阪、京都）", value="大阪")
+        flight_dates = st.text_input("飛行日期範圍（例如：4/15 - 4/20）", value="4/15 - 4/20")
+        transport = st.selectbox("交通偏好", ["大眾運輸", "混搭", "租車"])
+
+    attitude = st.selectbox(
+        "旅遊態度",
+        ["混合", "Chill（輕鬆慢活）", "什麼都要玩到（高強度）", "文化深度"]
+    )
+
+    submitted = st.form_submit_button("🚀 生成 3 筆推薦行程")
+
+if submitted:
+    user_input = {
+        "departure": departure,
         "destination": destination,
         "days": days,
         "budget": budget,
@@ -39,24 +52,55 @@ def get_user_input():
         "flight_dates": flight_dates
     }
 
-# ================== Tavily 搜尋（加入飛行日期） ==================
-def search_japan_info(user_input):
-    query = f"2026 日本 {user_input['destination']} {user_input['days']}天 自由行 台灣旅客 {user_input['attitude']} {user_input['transport']} 攻略 航班 {user_input['flight_dates']}"
-    
-    response = tavily.search(
-        query=query,
-        search_depth="advanced",
-        max_results=30,
-        include_answer=True,
-        include_raw_content=False,
-        time_range="month",
-        topic="general"
-    )
-    return response
+    with st.spinner("正在搜尋最新資訊並生成 3 筆行程... 請稍候"):
+        try:
+            # Tavily 搜尋
+            search_results = tavily.search(
+                query=f"2026 日本 {destination} {days}天 自由行 台灣旅客 {attitude} {transport} 攻略 航班 {flight_dates}",
+                search_depth="advanced",
+                max_results=8,
+                include_answer=True,
+                topic="general",
+                time_range="month"
+            )
 
-# ================== Gemini 生成 ==================
+            # 使用你提供的 Prompt 生成行程
+            markdown_content = generate_itineraries_with_gemini(user_input, search_results)
+
+            st.success("✅ 3 筆推薦行程已生成！")
+
+            st.markdown(markdown_content, unsafe_allow_html=True)
+
+            # 下載按鈕
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="📥 下載 Markdown",
+                    data=markdown_content,
+                    file_name=f"日本行程_{destination}_{days}天_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+                    mime="text/markdown"
+                )
+            with col2:
+                if st.button("📄 下載 PDF"):
+                    with st.spinner("正在轉換成 PDF..."):
+                        html_content = markdown2.markdown(markdown_content, extras=["tables"])
+                        full_html = f"""
+                        <html>
+                        <head><meta charset="utf-8"></head>
+                        <body style="font-family: 'Microsoft YaHei', sans-serif; padding: 40px;">
+                            {html_content}
+                        </body>
+                        </html>
+                        """
+                        pdf_bytes = HTML(string=full_html).write_pdf()
+                        b64 = base64.b64encode(pdf_bytes).decode()
+                        st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="日本行程.pdf">點此下載 PDF</a>', unsafe_allow_html=True)
+
+        except Exception as e:
+            st.error(f"生成失敗：{str(e)}")
+
+# ================== 你的 generate 函數（貼在這裡） ==================
 def generate_itineraries_with_gemini(user_input, search_results):
-    # 整理搜尋結果為結構化內容
     context = "## 參考資料來源\n\n"
     for i, result in enumerate(search_results.get("results", []), 1):
         context += f"**來源 {i}**：{result.get('title')}\n"
@@ -66,7 +110,6 @@ def generate_itineraries_with_gemini(user_input, search_results):
     if search_results.get("answer"):
         context += f"**整體參考**：{search_results['answer']}\n\n"
 
-    # 改進的 Prompt - 更清晰的結構和指導
     prompt = f"""你是一位資深日本自由行規劃師，擅長為台灣旅客設計符合預算、符合偏好的行程。
 
 ## 使用者需求
@@ -184,49 +227,18 @@ def generate_itineraries_with_gemini(user_input, search_results):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",  # 可根據可用模型調整
+                model="gemini-2.5-flash-lite",
                 contents=prompt
             )
             return response.text
         except Exception as e:
             error_str = str(e).lower()
-            if "503" in error_str or "unavailable" in error_str:
-                wait_time = min((2 ** attempt) + random.uniform(0, 2), 60)
-                print(f"   ⚠️ Gemini 忙碌，等待 {wait_time:.1f} 秒後重試...")
-                time.sleep(wait_time)
-            elif "api_request_throttled" in error_str or "rate" in error_str:
-                wait_time = min((2 ** attempt) + random.uniform(2, 5), 60)
-                print(f"   ⚠️ API 速率限制，等待 {wait_time:.1f} 秒後重試...")
+            if "503" in error_str or "unavailable" in error_str or "rate" in error_str:
+                wait_time = min((2 ** attempt) * 3 + random.uniform(3, 10), 120)
+                print(f"   ⚠️ Rate limit / 503，等待 {wait_time:.1f} 秒後重試...")
                 time.sleep(wait_time)
             else:
                 raise e
-    
     raise Exception("多次重試後仍失敗")
 
-# ================== 主程式 ==================
-if __name__ == "__main__":
-    user_input = get_user_input()
-    search_results = search_japan_info(user_input)
-    
-    print("🤖 正在生成 3 筆客製化行程（包含航班建議）...")
-    markdown_content = generate_itineraries_with_gemini(user_input, search_results)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    safe_dest = "".join(c if c.isalnum() or c in " _-" else "_" for c in user_input['destination'])
-    filename = f"日本行程_{safe_dest}_{user_input['days']}天_{timestamp}.md"
-    
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(f"# 日本客製化旅遊行程規劃\n\n")
-        f.write(f"**生成日期**：{datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
-        f.write(f"**使用者需求概要**\n")
-        f.write(f"- 出發地 → 目的地：{user_input['departure']} → {user_input['destination']}\n")
-        f.write(f"- 天數：{user_input['days']} 天\n")
-        f.write(f"- 預算：NT${user_input['budget']}\n")
-        f.write(f"- 飛行日期：{user_input['flight_dates']}\n")
-        f.write(f"- 交通方式：{user_input['transport']}\n")
-        f.write(f"- 旅遊態度：{user_input['attitude']}\n\n")
-        f.write("---\n\n")
-        f.write(markdown_content)
-    
-    print(f"\n✅ 完成！檔案已儲存：{filename}")
-    print("   現在包含完整的行程規劃、航班建議與實用秘訣！")
+st.caption("日本自由行 AI 規劃師 | 第一版")
