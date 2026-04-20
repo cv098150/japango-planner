@@ -80,21 +80,21 @@ if submitted:
                     file_name=f"日本行程_{destination}_{days}天_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
                     mime="text/markdown"
                 )
-            with col2:
-                if st.button("📄 下載 PDF"):
-                    with st.spinner("正在轉換成 PDF..."):
-                        html_content = markdown2.markdown(markdown_content, extras=["tables"])
-                        full_html = f"""
-                        <html>
-                        <head><meta charset="utf-8"></head>
-                        <body style="font-family: 'Microsoft YaHei', sans-serif; padding: 40px;">
-                            {html_content}
-                        </body>
-                        </html>
-                        """
-                        pdf_bytes = HTML(string=full_html).write_pdf()
-                        b64 = base64.b64encode(pdf_bytes).decode()
-                        st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="日本行程.pdf">點此下載 PDF</a>', unsafe_allow_html=True)
+            # with col2:
+            #     if st.button("📄 下載 PDF"):
+            #         with st.spinner("正在轉換成 PDF..."):
+            #             html_content = markdown2.markdown(markdown_content, extras=["tables"])
+            #             full_html = f"""
+            #             <html>
+            #             <head><meta charset="utf-8"></head>
+            #             <body style="font-family: 'Microsoft YaHei', sans-serif; padding: 40px;">
+            #                 {html_content}
+            #             </body>
+            #             </html>
+            #             """
+            #             pdf_bytes = HTML(string=full_html).write_pdf()
+            #             b64 = base64.b64encode(pdf_bytes).decode()
+            #             st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="日本行程.pdf">點此下載 PDF</a>', unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"生成失敗：{str(e)}")
