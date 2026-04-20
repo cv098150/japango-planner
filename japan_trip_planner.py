@@ -4,9 +4,6 @@ from google import genai
 import time
 import random
 from datetime import datetime
-import markdown2
-from weasyprint import HTML
-import base64
 
 # ================== 安全讀取 API Key ==================
 TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
@@ -64,51 +61,32 @@ if submitted:
                 time_range="month"
             )
 
-            # 使用你提供的 Prompt 生成行程
             markdown_content = generate_itineraries_with_gemini(user_input, search_results)
 
             st.success("✅ 3 筆推薦行程已生成！")
-
             st.markdown(markdown_content, unsafe_allow_html=True)
 
-            # 下載按鈕
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="📥 下載 Markdown",
-                    data=markdown_content,
-                    file_name=f"日本行程_{destination}_{days}天_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
-                    mime="text/markdown"
-                )
-            # with col2:
-            #     if st.button("📄 下載 PDF"):
-            #         with st.spinner("正在轉換成 PDF..."):
-            #             html_content = markdown2.markdown(markdown_content, extras=["tables"])
-            #             full_html = f"""
-            #             <html>
-            #             <head><meta charset="utf-8"></head>
-            #             <body style="font-family: 'Microsoft YaHei', sans-serif; padding: 40px;">
-            #                 {html_content}
-            #             </body>
-            #             </html>
-            #             """
-            #             pdf_bytes = HTML(string=full_html).write_pdf()
-            #             b64 = base64.b64encode(pdf_bytes).decode()
-            #             st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="日本行程.pdf">點此下載 PDF</a>', unsafe_allow_html=True)
+            # 只保留 Markdown 下載
+            st.download_button(
+                label="📥 下載 Markdown 檔案",
+                data=markdown_content,
+                file_name=f"日本行程_{destination}_{days}天_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+                mime="text/markdown"
+            )
 
         except Exception as e:
             st.error(f"生成失敗：{str(e)}")
 
-# ================== 你的 generate 函數（貼在這裡） ==================
+# ================== 你的 Prompt 與生成函數 ==================
 def generate_itineraries_with_gemini(user_input, search_results):
+    # 組合 context
     context = "## 參考資料來源\n\n"
     for i, result in enumerate(search_results.get("results", []), 1):
         context += f"**來源 {i}**：{result.get('title')}\n"
-        context += f"- 摘要：{result.get('content')}\n"
-        context += f"- 網址：{result.get('url')}\n\n"
+        context += f"- 摘要：{result.get('content', '')[:500]}...\n\n"
     
     if search_results.get("answer"):
-        context += f"**整體參考**：{search_results['answer']}\n\n"
+        context += f"**Tavily 整體總結**：{search_results['answer']}\n\n"
 
     prompt = f"""你是一位資深日本自由行規劃師，擅長為台灣旅客設計符合預算、符合偏好的行程。
 
@@ -227,18 +205,17 @@ def generate_itineraries_with_gemini(user_input, search_results):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model="gemini-2.5-flash-lite",   # 使用較穩定的 lite 版本
                 contents=prompt
             )
             return response.text
         except Exception as e:
-            error_str = str(e).lower()
-            if "503" in error_str or "unavailable" in error_str or "rate" in error_str:
+            if "503" in str(e) or "unavailable" in str(e).lower() or "rate" in str(e).lower():
                 wait_time = min((2 ** attempt) * 3 + random.uniform(3, 10), 120)
-                print(f"   ⚠️ Rate limit / 503，等待 {wait_time:.1f} 秒後重試...")
                 time.sleep(wait_time)
             else:
                 raise e
+    
     raise Exception("多次重試後仍失敗")
 
-st.caption("日本自由行 AI 規劃師 | 第一版")
+st.caption("日本自由行 AI 規劃師 | 第一版測試")
