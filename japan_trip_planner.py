@@ -150,26 +150,36 @@ def generate_itineraries_with_gemini(user_input, search_results):
     max_retries = 5
     for attempt in range(max_retries):
         try:
+            # 新 google-genai SDK 的用法
             response = client.models.generate_content(
                 model="gemini-1.5-flash",
                 contents=prompt
             )
 
-            # ✅ 安全回傳
-            if hasattr(response, "text") and response.text:
+            # ✅ 安全回傳 - 新 SDK 的回傳格式
+            if hasattr(response, "text"):
                 return response.text
+            elif hasattr(response, "candidates") and response.candidates:
+                part = response.candidates[0].content.parts[0]
+                if hasattr(part, "text"):
+                    return part.text
+                else:
+                    return str(part)
             else:
-                return response.candidates[0].content.parts[0].text
+                raise Exception(f"無效的回應格式: {response}")
 
         except Exception as e:
             error_msg = str(e).lower()
 
             # ✅ API 忙碌處理
-            if any(x in error_msg for x in ["503", "unavailable", "rate", "timeout"]):
+            if any(x in error_msg for x in ["503", "unavailable", "rate", "timeout", "resource exhausted"]):
                 wait_time = min((2 ** attempt) * 2 + random.uniform(1, 3), 30)
                 time.sleep(wait_time)
-            else:
+            elif attempt == max_retries - 1:
                 raise e
+            else:
+                # 其他錯誤，嘗試重試
+                time.sleep(2)
 
     raise Exception("多次重試後仍失敗")
 
