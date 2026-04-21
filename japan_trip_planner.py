@@ -34,7 +34,7 @@ def generate_itineraries_with_gemini(user_input, search_results):
         context += f"- 摘要：{result.get('content', '')[:200]}...\n\n"
 
     # 👉 你的 prompt（完全不動）
-   prompt = f"""你是一位資深日本自由行規劃師，擅長為台灣旅客設計符合預算、符合偏好的行程。
+    prompt = f"""你是一位資深日本自由行規劃師，擅長為台灣旅客設計符合預算、符合偏好的行程。
 
 ## 使用者需求
 - **出發地**：{user_input['departure']}
