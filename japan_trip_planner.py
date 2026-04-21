@@ -1,6 +1,6 @@
 import streamlit as st
 from tavily import TavilyClient
-import google.generativeai as genai
+from google import genai
 import time
 import random
 from datetime import datetime
@@ -11,8 +11,8 @@ GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
 
-# 正確初始化（不要 assign）
-genai.configure(api_key=GEMINI_API_KEY)
+# 初始化 Gemini 客戶端
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ================== UI ==================
 st.set_page_config(page_title="日本自由行 AI 規劃師", page_icon="🇯🇵", layout="centered")
@@ -150,8 +150,10 @@ def generate_itineraries_with_gemini(user_input, search_results):
     max_retries = 5
     for attempt in range(max_retries):
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt
+            )
 
             # ✅ 安全回傳
             if hasattr(response, "text") and response.text:
