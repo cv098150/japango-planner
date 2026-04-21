@@ -10,12 +10,12 @@ TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
-client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 st.set_page_config(page_title="日本自由行 AI 規劃師", page_icon="🇯🇵", layout="centered")
 
 st.title("🇯🇵 日本自由行 AI 規劃師")
-st.markdown("**用 NT$30,000 左右的預算，輕鬆規劃高品質日本行程**")
+st.markdown("**AI幫你輕鬆規劃高品質日本行程**")
 
 # ================== 生成函數（已修正） ==================
 def generate_itineraries_with_gemini(user_input, search_results):
