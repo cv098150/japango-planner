@@ -1,32 +1,40 @@
 import streamlit as st
 from tavily import TavilyClient
-from google import genai
+import google.generativeai as genai
 import time
 import random
 from datetime import datetime
 
-# ================== 安全讀取 API Key ==================
+# ================== API Key ==================
 TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
-client = genai.Client(api_key=GEMINI_API_KEY)
 
+# 正確初始化（不要 assign）
+genai.configure(api_key=GEMINI_API_KEY)
+
+# ================== UI ==================
 st.set_page_config(page_title="日本自由行 AI 規劃師", page_icon="🇯🇵", layout="centered")
 
 st.title("🇯🇵 日本自由行 AI 規劃師")
 st.markdown("**AI幫你輕鬆規劃高品質日本行程**")
 
-# ================== 生成函數（已修正） ==================
+# ================== 生成函數 ==================
 def generate_itineraries_with_gemini(user_input, search_results):
-    # 組合 context
-    context = "## 參考資料來源\n\n"
-    for i, result in enumerate(search_results.get("results", []), 1):
-        context += f"**來源 {i}**：{result.get('title')}\n"
-        context += f"- 摘要：{result.get('content', '')[:500]}...\n\n"
 
-    # 使用你提供的完整 Prompt
-    prompt = f"""你是一位資深日本自由行規劃師，擅長為台灣旅客設計符合預算、符合偏好的行程。
+    # ✅ 防呆（避免 Tavily 爆掉）
+    if not search_results or "results" not in search_results:
+        search_results = {"results": []}
+
+    # 組合 context（縮短避免 timeout）
+    context = "## 參考資料來源\n\n"
+    for i, result in enumerate(search_results.get("results", [])[:3], 1):
+        context += f"**來源 {i}**：{result.get('title')}\n"
+        context += f"- 摘要：{result.get('content', '')[:200]}...\n\n"
+
+    # 👉 你的 prompt（完全不動）
+   prompt = f"""你是一位資深日本自由行規劃師，擅長為台灣旅客設計符合預算、符合偏好的行程。
 
 ## 使用者需求
 - **出發地**：{user_input['departure']}
@@ -138,33 +146,40 @@ def generate_itineraries_with_gemini(user_input, search_results):
 
 開始生成 3 筆行程方案："""
 
-    # 重試機制（放在函數內部）
-    max_retries = 6
+    # 重試機制
+    max_retries = 5
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
-                contents=prompt
-            )
-            return response.text
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(prompt)
+
+            # ✅ 安全回傳
+            if hasattr(response, "text") and response.text:
+                return response.text
+            else:
+                return response.candidates[0].content.parts[0].text
+
         except Exception as e:
-            if any(x in str(e).lower() for x in ["503", "unavailable", "rate"]):
-                wait_time = min((2 ** attempt) * 3 + random.uniform(3, 10), 120)
+            error_msg = str(e).lower()
+
+            # ✅ API 忙碌處理
+            if any(x in error_msg for x in ["503", "unavailable", "rate", "timeout"]):
+                wait_time = min((2 ** attempt) * 2 + random.uniform(1, 3), 30)
                 time.sleep(wait_time)
             else:
                 raise e
+
     raise Exception("多次重試後仍失敗")
 
-
-# ================== 使用者輸入表單 ==================
+# ================== 表單 ==================
 with st.form("trip_form"):
     col1, col2 = st.columns(2)
-    
+
     with col1:
         departure = st.text_input("出發地", value="高雄")
         days = st.number_input("旅遊天數", min_value=3, max_value=10, value=5)
         budget = st.number_input("每人總預算 (NT$)", min_value=15000, max_value=100000, value=30000, step=1000)
-    
+
     with col2:
         destination = st.text_input("目的地（可多個，例如：大阪、京都）", value="大阪")
         flight_dates = st.text_input("飛行日期範圍（例如：4/15 - 4/20）", value="4/15 - 4/20")
@@ -177,6 +192,7 @@ with st.form("trip_form"):
 
     submitted = st.form_submit_button("🚀 生成 3 筆推薦行程")
 
+# ================== 主流程 ==================
 if submitted:
     user_input = {
         "departure": departure,
@@ -190,20 +206,22 @@ if submitted:
 
     with st.spinner("正在搜尋最新資訊並生成 3 筆行程... 請稍候"):
         try:
+            # Tavily 搜尋
             search_results = tavily.search(
                 query=f"2026 日本 {destination} {days}天 自由行 台灣旅客 {attitude} {transport} 攻略 航班 {flight_dates}",
                 search_depth="advanced",
-                max_results=8,
-                include_answer=True,
+                max_results=5,
                 topic="general",
                 time_range="month"
             )
 
+            # Gemini 生成
             markdown_content = generate_itineraries_with_gemini(user_input, search_results)
 
             st.success("✅ 3 筆推薦行程已生成！")
             st.markdown(markdown_content, unsafe_allow_html=True)
 
+            # 下載
             st.download_button(
                 label="📥 下載 Markdown 檔案",
                 data=markdown_content,
