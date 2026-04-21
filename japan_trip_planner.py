@@ -10,7 +10,7 @@ TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
 
 st.set_page_config(page_title="日本自由行 AI 規劃師", page_icon="🇯🇵", layout="centered")
 
